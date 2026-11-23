@@ -279,7 +279,9 @@
             desc: '''CS_N Leading Time.  Indicates the number of half sck cycles,
                      CSNLEAD+1, to leave between the falling edge of cs_n and
                      the first edge of sck.  Setting this register to zero
-                     corresponds to the minimum delay of one-half sck cycle'''
+                     corresponds to the minimum delay of one-half sck cycle.
+                     With CPHA=0 and FULLCYC=0, the first bit that the host
+                     shifts in is the one sampled at that first sck edge.'''
             resval: 0
           },
           { bits: "23:20",

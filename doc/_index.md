@@ -948,6 +948,7 @@ An input command is registered whenever `command_valid_i` and `command_ready_o` 
 2. WaitLead state: In this state, `sck` remains low, and the `csb` line corresponding to `csid` is asserted-low.
 The purpose of this state is to hold `sck` low for at least `csnlead` + 1 timeslices, before the first rising edge of `sck`.
 For this reason, the FSM uses the `wait_cntr` to track the number of timeslices spent in this state, and only exits when `wait_cntr` counts down to zero, at which point the FSM transitions to the `InternalClkHigh` state.
+For `CPHA==0` and `FULLCYC==0`, the last timeslice of this state also enables the sample of the first bit, so that the host samples that bit at the first rising edge of `sck`, `csnlead` + 1 timeslices after `csb` falls.
 
 3. InternalClkHigh state: Entering this state drives `sck` high.
 This state repeats many times per segment, and usually transitions to the `InternalClkLow` state.
@@ -1010,7 +1011,7 @@ The milestone signals compare the state register input (`state_d`) with its outp
   {name: 'sck', wave: '0....10101010101010101010'},
   {name: 'state_d',
    wave: 'x22.42424242424242424242', data: "Idle WL Hi Lo Hi Lo Hi Lo Hi Lo Hi Lo Hi Lo Hi Lo Hi Lo Hi Lo Hi Lo",
-   node: '..Z..Y.............X'},
+   node: '..ZT.Y.............X'},
   {name: 'byte_starting / wr_en_o',
    wave: 'x010...............10....',
    node: '..A................E'},
@@ -1021,10 +1022,10 @@ The milestone signals compare the state register input (`state_d`) with its outp
    wave: 'x0...10101010101010..1010',
    node: '.....C'},
   {name: 'sample_en_o',
-   wave: 'x0.10.1010101010101010101',
-   node: '...B..D'},
+   wave: 'x0.1.01010101010101010101',
+   node: '...BG.D'},
   {name: 'sample_event',
-   wave: '1...H..H.H.H.H.H.H.H.H.H.'},
+   wave: '1...HH.H.H.H.H.H.H.H.H.H.'},
   {name:'sd_o',
    wave:'x..2..2.2.2.2.2.2.2.2.2.2',
    node:'',
@@ -1033,12 +1034,17 @@ The milestone signals compare the state register input (`state_d`) with its outp
   {name: 'byte_cntr_cpha0_q', wave: 'x2.2................2....', data: "0 N N-1"},
 
 ],
-edge: ['A-~>B', 'C-~>D', 'Z-~>A', 'Y-~>C', 'X-~>E', 'X-~>F', 'Z-~>W', 'Y-~>V', 'X-~>U'],
+edge: ['A-~>B', 'C-~>D', 'T-~>G', 'Z-~>A', 'Y-~>C', 'X-~>E', 'X-~>F', 'Z-~>W', 'Y-~>V', 'X-~>U'],
 config: {hscale: 1},
 head: {text: "Timing Relationship between FSM states, Milestone Signals, and Shift Register controls (with CPHA=0)"},
 foot: {text: "Key: WL=\"WaitLead\", Hi=\"InternalClkHigh\", Lo=\"InternalClkLow\" "}
 }
 {{< /wavejson >}}
+
+The waveform uses `csnlead` = 1, so the FSM stays in `WaitLead` for two timeslices, and `sample_en_o` is high in both.
+The enable in the first `WaitLead` timeslice comes from `byte_starting`, and samples `sd` one timeslice after `csb` falls.
+The enable in the last `WaitLead` timeslice samples `sd` again at the first rising edge of `sck`, and this second sample replaces the first before the first shift.
+With `csnlead` = 0, `WaitLead` lasts one timeslice, and the two enables are the same one.
 
 When working from a CPHA=0 configuration, the milestone signals are directly controlled by transitions in the FSM state register, as described in the following table.
 

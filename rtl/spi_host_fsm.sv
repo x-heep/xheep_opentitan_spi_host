@@ -80,6 +80,7 @@ module spi_host_fsm
   logic             byte_ending, byte_ending_cpha0, byte_ending_cpha1;
 
   logic             sample_en_d, sample_en_q, sample_en_q2;
+  logic             first_bit_sample_cpha0;
 
   logic             config_changed;
   logic             fsm_en;
@@ -519,7 +520,12 @@ module spi_host_fsm
   assign shift_en_internal = bit_shifting;
 
   assign rd_en_internal    = byte_ending & segment_rd_en;
-  assign sample_en_d       = byte_starting | shift_en_o;
+  // For CPHA=0 the device drives the first bit when csb falls, and the host
+  // samples it at the first leading sck edge, which ends WaitLead. So the last
+  // WaitLead timeslice enables the sample too; with CSNLEAD=0 it is the first.
+  assign first_bit_sample_cpha0 = ~sw_rst_i & ~cpha & (state_d == WaitLead) &
+                                  (wait_cntr_d == 4'h0);
+  assign sample_en_d       = byte_starting | shift_en_o | first_bit_sample_cpha0;
   assign full_cyc_o        = full_cyc;
   assign last_read_o       = (byte_cntr_late == 'h0) & rd_en_o & sr_rd_ready_i;
 

@@ -1,5 +1,5 @@
 diff --git a/hw/ip/spi_host/data/spi_host.hjson b/hw/ip/spi_host/data/spi_host.hjson
-index 211dfa4d9f..9cc94e2548 100644
+index 211dfa4d9f..8da2461404 100644
 --- a/hw/ip/spi_host/data/spi_host.hjson
 +++ b/hw/ip/spi_host/data/spi_host.hjson
 @@ -2,11 +2,10 @@
@@ -164,7 +164,17 @@ index 211dfa4d9f..9cc94e2548 100644
              resval: 0
            },
            { bits: "27:24",
-@@ -288,8 +286,10 @@
+@@ -281,15 +279,19 @@
+             desc: '''CS_N Leading Time.  Indicates the number of half sck cycles,
+                      CSNLEAD+1, to leave between the falling edge of cs_n and
+                      the first edge of sck.  Setting this register to zero
+-                     corresponds to the minimum delay of one-half sck cycle'''
++                     corresponds to the minimum delay of one-half sck cycle.
++                     With CPHA=0 and FULLCYC=0, the first bit that the host
++                     shifts in is the one sampled at that first sck edge.'''
+             resval: 0
+           },
+           { bits: "23:20",
              name: "CSNTRAIL"
              desc: '''CS_N Trailing Time.  Indicates the number of half sck cycles,
                       CSNTRAIL+1, to leave between last edge of sck and the rising
@@ -177,7 +187,7 @@ index 211dfa4d9f..9cc94e2548 100644
              resval: 0
            },
            { bits: "19:16",
-@@ -336,24 +336,24 @@
+@@ -336,24 +338,24 @@
        hwext: "true",
        hwqe: "true",
        fields: [
@@ -207,7 +217,7 @@ index 211dfa4d9f..9cc94e2548 100644
                     line is left low at the end of the current transaction
                     segment.  This allows the creation longer, more
                     complete SPI transactions, consisting of several separate
-@@ -361,7 +361,7 @@
+@@ -361,7 +363,7 @@
                     and transmitting or receiving data from the device.''',
            resval: "0x0"
          },
@@ -216,7 +226,7 @@ index 211dfa4d9f..9cc94e2548 100644
            name: "LEN",
            desc: '''Segment Length.
  
-@@ -392,7 +392,7 @@
+@@ -392,7 +394,7 @@
                   The serial order of bit transmission
                   is chosen to match SPI flash devices. Individual bytes
                   are always transmitted with the most significant bit first.
@@ -225,7 +235,7 @@ index 211dfa4d9f..9cc94e2548 100644
                   the first byte received is packed in the MSB of !!RXDATA.
                   For some processor architectures, this could lead to shuffling
                   of flash data as compared to how it is written in memory.
-@@ -440,13 +440,15 @@
+@@ -440,13 +442,15 @@
          { bits: "4",
            name: "CSIDINVAL",
            desc: '''Invalid CSID: If this bit is set, the block sends an error interrupt whenever
@@ -243,7 +253,7 @@ index 211dfa4d9f..9cc94e2548 100644
                     !!COMMAND.SPEED or !!COMMAND.DIRECTION.''',
            resval: "0x1"
          },
-@@ -466,14 +468,14 @@
+@@ -466,14 +470,14 @@
          { bits: "0",
            name: "CMDBUSY",
            desc: '''Command Error: If this bit is set, the block sends an error
@@ -261,7 +271,7 @@ index 211dfa4d9f..9cc94e2548 100644
                 When an error
                 occurs, the corresponding bit must be cleared here before
                 issuing any further commands.'''
-@@ -482,22 +484,23 @@
+@@ -482,22 +486,23 @@
        fields: [
          { bits: "5",
            name: "ACCESSINVAL",
@@ -291,7 +301,7 @@ index 211dfa4d9f..9cc94e2548 100644
               resval: "0x0"
          },
          { bits: "2",
-@@ -549,7 +552,7 @@
+@@ -549,7 +554,7 @@
          { bits: "2",
            name: "RXWM",
            desc: '''Assert to send a spi_event interrupt whenever the number of 32-bit words in
@@ -301,7 +311,7 @@ index 211dfa4d9f..9cc94e2548 100644
                     increase !!CONTROL.RX_WATERMARK.''',
            resval: "0x0"
 diff --git a/hw/ip/spi_host/doc/_index.md b/hw/ip/spi_host/doc/_index.md
-index 081ea8d309..9b13ef56de 100644
+index 081ea8d309..591aad39e8 100644
 --- a/hw/ip/spi_host/doc/_index.md
 +++ b/hw/ip/spi_host/doc/_index.md
 @@ -21,7 +21,7 @@ See that document for integration overview within the broader top-level system.
@@ -886,7 +896,7 @@ index 081ea8d309..9b13ef56de 100644
  
  ### Basic Operation
  
-@@ -920,29 +930,34 @@ In this case the state machine can be simplified to the following figure.
+@@ -920,29 +930,35 @@ In this case the state machine can be simplified to the following figure.
  
  ![](spi_host_fsm_simplified.svg)
  
@@ -913,6 +923,7 @@ index 081ea8d309..9b13ef56de 100644
  The purpose of this state is to hold `sck` low for at least `csnlead` + 1 timeslices, before the first rising edge of `sck`.
 -For his reason, the FSM uses the `wait_cntr` to track the number of timeslices spent in this state, and only exits when `wait_cntr` counts down to zero, at which point the FSM transitions to the `InternalClkHigh` state.
 +For this reason, the FSM uses the `wait_cntr` to track the number of timeslices spent in this state, and only exits when `wait_cntr` counts down to zero, at which point the FSM transitions to the `InternalClkHigh` state.
++For `CPHA==0` and `FULLCYC==0`, the last timeslice of this state also enables the sample of the first bit, so that the host samples that bit at the first rising edge of `sck`, `csnlead` + 1 timeslices after `csb` falls.
  
  3. InternalClkHigh state: Entering this state drives `sck` high.
  This state repeats many times per segment, and usually transitions to the `InternalClkLow` state.
@@ -929,7 +940,7 @@ index 081ea8d309..9b13ef56de 100644
  
  5. WaitTrail state: Similar to the WaitLead, this state serves to control the timing of the `csb` line.
  The FSM uses the `wait_cntr` register to ensure that it remains in this state for `csntrail+1` timeslices, during which time the active `csb` is still held low.
-@@ -951,7 +966,7 @@ This state transitions to `WaitIdle` when `wait_cntr` is zero.
+@@ -951,7 +967,7 @@ This state transitions to `WaitIdle` when `wait_cntr` is zero.
  
  6. WaitIdle state: In this timing control state, the FSM uses the `wait_cntr` register to ensure that all `csb` lines are held high for at least `csnidle+1` timeslices.
  The `wait_cntr` register resets to {{< regref "CONFIGOPTS.CSNIDLE" >}} upon entering this state, and is decremented once per timeslice.
@@ -938,7 +949,7 @@ index 081ea8d309..9b13ef56de 100644
  
  {{< wavejson >}}
  {signal: [
-@@ -974,7 +989,7 @@ The shift register control signals are managed through the use of three intermed
+@@ -974,7 +990,7 @@ The shift register control signals are managed through the use of three intermed
  - `byte_starting`: This signal indicates the start of a new byte on the `sd` bus in the *following* clock cycle.
  For Bidirectional or TX segments this signal would indicate that it is time to load a new byte into the shift register.
  This signal corresponds to the FSM's `wr_en_o` port, though that output is suppressed during RX or dummy segments.
@@ -947,7 +958,7 @@ index 081ea8d309..9b13ef56de 100644
  As illustrated in the following waveform, the `byte_starting` and `byte_ending` signals are often asserted at the same time, though there is an extra `byte_starting` pulse at the beginning of each command and an extra `byte_ending` pulse at the end.
  For RX and bidirectional command segments, a `byte_ending` pulse generates a `rd_en_o` pulse to the shift register, which transfers the 8-bit contents of the shift register into the RX FIFO via the Byte Merge block.
  - `bit_shifting`: This signal drives the `shift_en_o` control line to the shift register, ejecting the most-significant bits, and updating the `sd` outputs.
-@@ -982,7 +997,7 @@ For RX and bidirectional command segments, a `byte_ending` pulse generates a `rd
+@@ -982,7 +998,7 @@ For RX and bidirectional command segments, a `byte_ending` pulse generates a `rd
  These *milestone signals* mark the progress of each command segment.
  
  The coordination of the milestone signals and the shift register controls are shown in the following waveform.
@@ -956,7 +967,26 @@ index 081ea8d309..9b13ef56de 100644
  
  {{< wavejson >}}
  {signal: [
-@@ -1013,9 +1028,9 @@ Since the milestone signal pulses coincide with *entering* particular FSM states
+@@ -995,7 +1011,7 @@ Since the milestone signal pulses coincide with *entering* particular FSM states
+   {name: 'sck', wave: '0....10101010101010101010'},
+   {name: 'state_d',
+    wave: 'x22.42424242424242424242', data: "Idle WL Hi Lo Hi Lo Hi Lo Hi Lo Hi Lo Hi Lo Hi Lo Hi Lo Hi Lo Hi Lo",
+-   node: '..Z..Y.............X'},
++   node: '..ZT.Y.............X'},
+   {name: 'byte_starting / wr_en_o',
+    wave: 'x010...............10....',
+    node: '..A................E'},
+@@ -1006,25 +1022,30 @@ Since the milestone signal pulses coincide with *entering* particular FSM states
+    wave: 'x0...10101010101010..1010',
+    node: '.....C'},
+   {name: 'sample_en_o',
+-   wave: 'x0.10.1010101010101010101',
+-   node: '...B..D'},
++   wave: 'x0.1.01010101010101010101',
++   node: '...BG.D'},
+   {name: 'sample_event',
+-   wave: '1...H..H.H.H.H.H.H.H.H.H.'},
++   wave: '1...HH.H.H.H.H.H.H.H.H.H.'},
    {name:'sd_o',
     wave:'x..2..2.2.2.2.2.2.2.2.2.2',
     node:'',
@@ -967,8 +997,23 @@ index 081ea8d309..9b13ef56de 100644
 +  {name: 'byte_cntr_cpha0_q', wave: 'x2.2................2....', data: "0 N N-1"},
  
  ],
- edge: ['A-~>B', 'C-~>D', 'Z-~>A', 'Y-~>C', 'X-~>E', 'X-~>F', 'Z-~>W', 'Y-~>V', 'X-~>U'],
-@@ -1042,14 +1057,33 @@ When working from a CPHA=0 configuration, the milestone signals are directly con
+-edge: ['A-~>B', 'C-~>D', 'Z-~>A', 'Y-~>C', 'X-~>E', 'X-~>F', 'Z-~>W', 'Y-~>V', 'X-~>U'],
++edge: ['A-~>B', 'C-~>D', 'T-~>G', 'Z-~>A', 'Y-~>C', 'X-~>E', 'X-~>F', 'Z-~>W', 'Y-~>V', 'X-~>U'],
+ config: {hscale: 1},
+ head: {text: "Timing Relationship between FSM states, Milestone Signals, and Shift Register controls (with CPHA=0)"},
+ foot: {text: "Key: WL=\"WaitLead\", Hi=\"InternalClkHigh\", Lo=\"InternalClkLow\" "}
+ }
+ {{< /wavejson >}}
+ 
++The waveform uses `csnlead` = 1, so the FSM stays in `WaitLead` for two timeslices, and `sample_en_o` is high in both.
++The enable in the first `WaitLead` timeslice comes from `byte_starting`, and samples `sd` one timeslice after `csb` falls.
++The enable in the last `WaitLead` timeslice samples `sd` again at the first rising edge of `sck`, and this second sample replaces the first before the first shift.
++With `csnlead` = 0, `WaitLead` lasts one timeslice, and the two enables are the same one.
++
+ When working from a CPHA=0 configuration, the milestone signals are directly controlled by transitions in the FSM state register, as described in the following table.
+ 
+ <table>
+@@ -1042,14 +1063,33 @@ When working from a CPHA=0 configuration, the milestone signals are directly con
  When working from a CPHA=1 configuration, the milestone signals exploit the fact that there is usually a unique correspondence between `csb`/`sck` events and FSM transitions.
  There are some exceptions to this pattern since, as discussed below, CSAAT- and multi-csb-support requires the creation of multiple flavors of idle states.
  However, there are no milestone signal pulses in any of the transitions between these various idle states.
@@ -1006,7 +1051,7 @@ index 081ea8d309..9b13ef56de 100644
  
  {{< wavejson >}}
  {signal: [
-@@ -1088,14 +1122,16 @@ That said, there are two copies of each milestone signal:
+@@ -1088,14 +1128,16 @@ That said, there are two copies of each milestone signal:
      wave: 'x0...101010..101010....'},
    {name: 'bit_cntr_q', wave: 'x2.2..2.2.2.2.2.2.2....',
     data: "0 6 4 2 0 6 4 2 0"},
@@ -1026,7 +1071,7 @@ index 081ea8d309..9b13ef56de 100644
     {name: 'byte_starting',
      wave: 'x0..10......10.........'},
     {name: 'bit_shifting',
-@@ -1104,13 +1140,13 @@ That said, there are two copies of each milestone signal:
+@@ -1104,13 +1146,13 @@ That said, there are two copies of each milestone signal:
      wave: 'x0..........10......10.'},
    {name: 'bit_cntr_q', wave: 'x2...2.2.2.2.2.2.2.2...',
     data: "0 6 4 2 0 6 4 2 0"},
@@ -1045,7 +1090,7 @@ index 081ea8d309..9b13ef56de 100644
    ],
  ],
  edge: ['Z-~>A','Y-~>G', 'X-~>C', 'X-~>E','A->B', 'C->D', 'E->F', 'G->H', 'I->J', 'K->L', 'Z->W', 'Y->V', 'X->U'],
-@@ -1120,7 +1156,7 @@ foot: {text: "Key: WL=\"WaitLead\", Hi=\"InternalClkHigh\", Lo=\"InternalClkLow\
+@@ -1120,7 +1162,7 @@ foot: {text: "Key: WL=\"WaitLead\", Hi=\"InternalClkHigh\", Lo=\"InternalClkLow\
  }
  {{< /wavejson >}}
  
@@ -1054,7 +1099,7 @@ index 081ea8d309..9b13ef56de 100644
  
  The previous waveform also highlights the relationship between the milestone signals and the bit and byte counters.
  At the beginning of each byte `bit_cntr_q` is reset to a speed-specific value, to trigger the correct number of shift operations required for each byte:
-@@ -1128,14 +1164,15 @@ At the beginning of each byte `bit_cntr_q` is reset to a speed-specific value, t
+@@ -1128,14 +1170,15 @@ At the beginning of each byte `bit_cntr_q` is reset to a speed-specific value, t
  - 6 for Dual-mode
  - 4 for Quad-mode
  
@@ -1073,7 +1118,7 @@ index 081ea8d309..9b13ef56de 100644
  
  This relationship between the milestone signals and the bit and byte counters is also illustrated in the previous waveform.
  
-@@ -1146,8 +1183,8 @@ The configuration change must be preceded by enough idle time to satisfy the pre
+@@ -1146,8 +1189,8 @@ The configuration change must be preceded by enough idle time to satisfy the pre
  
  In order to support these idle time requirements, the SPI_HOST FSM has two idle waiting states.
  - The `WaitIdle` state manages the idle time requirements of the *preceding* command segment, and usually transitions to the `Idle` state afterwards.
@@ -1084,7 +1129,7 @@ index 081ea8d309..9b13ef56de 100644
  From the `ConfigSwitch` state, the state machine directly enters the `WaitLead` state to start the next command segment.
  
  A complete state diagram, including the `ConfigSwitch` state, is shown in the following section.
-@@ -1162,13 +1199,12 @@ The following waveform illustrates how a change in a single {{< regref "CONFIGOP
+@@ -1162,13 +1205,12 @@ The following waveform illustrates how a change in a single {{< regref "CONFIGOP
    {name: 'cpol_q',                    wave: '0........1........'},
    {name: 'switch_required',           wave: '1........x........'},
    {name: 'command_valid_i',           wave: '1........0........'},
@@ -1099,7 +1144,7 @@ index 081ea8d309..9b13ef56de 100644
    head: {text: "Extension of CSB Idle Pulse Due to CPOL Configuration Switch", tock: 1},
    foot: { text: "(Note: Due to the presence of a valid command, the FSM transitions directly from WaitIdle to ConfigSwitch)"}
  }
-@@ -1178,16 +1214,21 @@ The following waveform illustrates how a change in a single {{< regref "CONFIGOP
+@@ -1178,16 +1220,21 @@ The following waveform illustrates how a change in a single {{< regref "CONFIGOP
  
  In addition to omitting the `ConfigSwitch` state, the simplified state machine illustrated above does not take into account commands with multiple segments, where the CSAAT bit is enabled for all but the last segment.
  
@@ -1126,7 +1171,7 @@ index 081ea8d309..9b13ef56de 100644
  
  {{< wavejson >}}
  {signal: [
-@@ -1199,15 +1240,18 @@ When a command segment is received in the `IdleCSBActive` state, it transitions
+@@ -1199,15 +1246,18 @@ When a command segment is received in the `IdleCSBActive` state, it transitions
    {name: 'sck (CPOL=0)',    wave: '1010....1010'},
    {name: 'sd (CPHA=0)',     wave: '35.....3.4.5'}
   ],
@@ -1147,7 +1192,7 @@ index 081ea8d309..9b13ef56de 100644
  ### Skipped idle states
  
  The `Idle` and `IdleCSBActive` states are unique from the others in that:
-@@ -1219,7 +1263,7 @@ If an incoming command is detected as the FSM is about to enter an idle state, t
+@@ -1219,7 +1269,7 @@ If an incoming command is detected as the FSM is about to enter an idle state, t
  These bypassable states, which are highlighted in the previous diagram, represent a number of possible transitions from one *pre-idle* state to a following *post-idle* state.
  For clarity such transitions are left implicit in the diagram above.
  However they could also be explicitly added to the state diagram.
@@ -1156,7 +1201,7 @@ index 081ea8d309..9b13ef56de 100644
  
  ![](spi_host_bypassable_state.svg)
  
-@@ -1238,7 +1282,7 @@ From an implementation standpoint, the presence of a stall condition has two eff
+@@ -1238,7 +1288,7 @@ From an implementation standpoint, the presence of a stall condition has two eff
  1. No flops or registers may be updated during a stall condition.
  Thus the FSM may not progress while stalled.
  
@@ -1165,7 +1210,7 @@ index 081ea8d309..9b13ef56de 100644
  
  # Programmer's Guide
  
-@@ -1273,7 +1317,7 @@ The proper settings for the {{< regref "CONFIGOPTS" >}} fields (e.g., CPOL and C
+@@ -1273,7 +1323,7 @@ The proper settings for the {{< regref "CONFIGOPTS" >}} fields (e.g., CPOL and C
  
  ### Interrupt configuration
  
@@ -1174,7 +1219,7 @@ index 081ea8d309..9b13ef56de 100644
  This should also be done at initialization using the following register fields:
  - The {{< regref "ERROR_ENABLE" >}} register should be configured to indicate what types of error conditions (if any) should be ignored to not trigger an interrupt.
  At reset, these fields are all set indicating that all error classes trigger an interrupt.
-@@ -1311,12 +1355,12 @@ Some attention, however, should be paid to byte-ordering and segmenting conventi
+@@ -1311,12 +1361,12 @@ Some attention, however, should be paid to byte-ordering and segmenting conventi
  
  For SPI flash applications, it is generally assumed that most of the *payload* data will be directly copied from embedded SRAM to the flash device.
  
@@ -1189,7 +1234,7 @@ index 081ea8d309..9b13ef56de 100644
  
  In this way, configuring `ByteOrder` to match the CPU ensures that data is transmitted in memory-address order.
  
-@@ -1324,7 +1368,7 @@ The value of the `ByteOrder` parameter can be confirmed by firmware by reading t
+@@ -1324,7 +1374,7 @@ The value of the `ByteOrder` parameter can be confirmed by firmware by reading t
  
  Not all data to the SPI device will come from memory however.
  In many cases the transaction command codes or headers will be constructed or packed on the fly in CPU registers.
@@ -1198,7 +1243,7 @@ index 081ea8d309..9b13ef56de 100644
  
  For example, SPI flash devices generally expect flash addresses (or any other multi-byte values) to be transmitted MSB-first.
  This is illustrated in the following figure, which depicts a Fast Quad Read I/O command.
-@@ -1335,13 +1379,13 @@ Assuming that `ByteOrder` is set to `1` for Little-Endian devices such as Ibex,
+@@ -1335,13 +1385,13 @@ Assuming that `ByteOrder` is set to `1` for Little-Endian devices such as Ibex,
    {name:"csb", wave:"10........................."},
    {name:"sck", wave:"lnn........................"},
    {name:"sd[0]", wave:"x1..0101.22222222z.22334455",
@@ -1216,7 +1261,7 @@ index 081ea8d309..9b13ef56de 100644
    {node: ".A.......B.C.D.E.F.G.H.I.J.K"},
    {node: ".........L.....M...N........O"}
  ],
-@@ -1357,7 +1401,7 @@ Byte ordering on the bus can also be managed by writing {{< regref "TXDATA" >}}
+@@ -1357,7 +1407,7 @@ Byte ordering on the bus can also be managed by writing {{< regref "TXDATA" >}}
  A few examples related to using SPI flash devices on a Little-Endian platform:
  - A 4-byte address can be loaded into the TX FIFO as four individual bytes using 8-bit I/O instructions.
  - The above read command (with 4-byte address) can be loaded into the FIFO by first loading the command code into {{< regref "TXDATA" >}} as a single byte, and the address can be loaded into {{< regref "TXDATA" >}} using 32-bit instructions, provided the byte order is swapped before loading.
@@ -1225,7 +1270,7 @@ index 081ea8d309..9b13ef56de 100644
      - After the 8-bit command code is sent, the address can either be sent in several I/O operations (e.g., the MSB is sent as an 8-bit command, and the remaining 16-bits can be sent after swapping)
      - If bandwidth efficiency is a priority, the address, `A[23:0]`, and command code, `C[7:0]`, can all be packed together into a single 4-byte quantity `W[31:0] = {A[7:0], A[15:8], A[23:16], C[7:0]}`, which when loaded into {{< regref "TXDATA" >}} will ensure that the command code is sent first, followed by the address in MSB-first order.
  
-@@ -1380,26 +1424,26 @@ The length, CSAAT flag, direction and speed settings for that segment should all
+@@ -1380,26 +1430,26 @@ The length, CSAAT flag, direction and speed settings for that segment should all
  
  The {{< regref "COMMAND" >}} should only be written when {{< regref "STATUS.READY" >}} is asserted.
  
@@ -1259,7 +1304,7 @@ index 081ea8d309..9b13ef56de 100644
  
  Other system-level errors may arise due to improper programming of the target device (e.g., due to violations in the device programming model, or improper configuration of the SPI_HOST timing registers).
  Given that the SPI protocol provides no mechanism for the target device to stall the bus, the SPI_HOST will continue to function even if the remote device becomes unresponsive.
-@@ -1412,8 +1456,9 @@ In the event of an error the SPI_HOST IP can be reset under software control usi
+@@ -1412,8 +1462,9 @@ In the event of an error the SPI_HOST IP can be reset under software control usi
  1. Set {{< regref "CONTROL.SW_RST" >}}.
  2. Poll IP status registers for confirmation of successful state machine reset:
     - Wait for {{< regref "STATUS.ACTIVE" >}} to clear.
@@ -1271,7 +1316,7 @@ index 081ea8d309..9b13ef56de 100644
  
  ## Device Interface Functions (DIFs)
  
-@@ -1429,19 +1474,19 @@ In the event of an error the SPI_HOST IP can be reset under software control usi
+@@ -1429,19 +1480,19 @@ In the event of an error the SPI_HOST IP can be reset under software control usi
  
  Even if the RX (or TX) FIFOs have free-space (or data) available, stall events can still happen due to momentary backlogs or bubbles in the data pipeline.
  For instance, the Byte Merge and Byte Select blocks occasionally need some extra cycles to clean out the internal `prim_packer_fifo`.
@@ -1298,7 +1343,7 @@ index 081ea8d309..9b13ef56de 100644
  
  Assuming that each TX Word has at least one byte enabled, the longest possible transient delay between two Byte Select outputs is 7 clock cycles (with three byte-disables in two adjacent words, respectively aligned for maximal delay and assuming no delays in the TX FIFOs themselves).
  Dual- and Standard-mode segments can tolerate inter-byte delays of 7 or 15 clocks respectively, and thus transient stalls should not be a problem after Dual- or Standard-mode segments.
-@@ -1459,9 +1504,9 @@ As shown in the following waveform, even in Quad-mode, this buffer means the shi
+@@ -1459,9 +1510,9 @@ As shown in the following waveform, even in Quad-mode, this buffer means the shi
  {signal: [
    [ "Shift Register Ports",
    {name: "clk_core_i",                  wave: "p..........................."},
@@ -1310,7 +1355,7 @@ index 081ea8d309..9b13ef56de 100644
    {name: "rx_valid_o (to Byte Merge)",   wave: "0.....10..1....0..10..1....."},
    {name: "rx_ready_i (from Byte Merge)", wave: "1......0.....1.....0......1.",
                                          node: ".......A.....B.....C......D"},
-@@ -1474,16 +1519,16 @@ As shown in the following waveform, even in Quad-mode, this buffer means the shi
+@@ -1474,16 +1525,16 @@ As shown in the following waveform, even in Quad-mode, this buffer means the shi
  }
  {{< /wavejson >}}
  
@@ -1330,7 +1375,7 @@ index 081ea8d309..9b13ef56de 100644
    {name: "rx_valid_o", wave: "0.....10..1...........010"},
    {name: "rx_ready_i (from Byte Merge)", wave: "1......0.....10...10.1...",
                        node: ".......A.....BC...D"},
-@@ -1505,9 +1550,9 @@ However with enough (at least six) consecutive one-byte segments, the accumulate
+@@ -1505,9 +1556,9 @@ However with enough (at least six) consecutive one-byte segments, the accumulate
  {signal: [
   [ "Shift Register Ports",
    {name: "clk_core_i", wave: "p..........................."},
@@ -1548,7 +1593,7 @@ index 0f1e36ee5f..ae8866b66f 100644
  
    assign tx_empty_o = (tx_qd_o == 0);
 diff --git a/hw/ip/spi_host/rtl/spi_host_fsm.sv b/hw/ip/spi_host/rtl/spi_host_fsm.sv
-index 7ab1754732..d7bf31c63a 100644
+index 7ab1754732..838fe0de59 100644
 --- a/hw/ip/spi_host/rtl/spi_host_fsm.sv
 +++ b/hw/ip/spi_host/rtl/spi_host_fsm.sv
 @@ -2,9 +2,11 @@
@@ -1573,7 +1618,7 @@ index 7ab1754732..d7bf31c63a 100644
    logic [CSW-1:0]   csid;
    logic [CSW-1:0]   csid_q;
  
-@@ -51,33 +51,33 @@ module spi_host_fsm
+@@ -51,43 +51,42 @@ module spi_host_fsm
    logic             full_cyc, cpha, cpol;
    logic             full_cyc_q, cpha_q, cpol_q;
  
@@ -1615,8 +1660,9 @@ index 7ab1754732..d7bf31c63a 100644
 +  logic             byte_ending, byte_ending_cpha0, byte_ending_cpha1;
  
    logic             sample_en_d, sample_en_q, sample_en_q2;
++  logic             first_bit_sample_cpha0;
  
-@@ -85,9 +85,7 @@ module spi_host_fsm
+   logic             config_changed;
    logic             fsm_en;
  
    // new_command: signals a new segment input
@@ -1627,7 +1673,7 @@ index 7ab1754732..d7bf31c63a 100644
  
    logic             csb_single_d;
    logic [NumCS-1:0] csb_q;
-@@ -161,7 +159,7 @@ module spi_host_fsm
+@@ -161,7 +160,7 @@ module spi_host_fsm
        cmd_rd_en_q <= 1'b0;
        cmd_wr_en_q <= 1'b0;
        cmd_speed_q <= 2'b00;
@@ -1636,7 +1682,7 @@ index 7ab1754732..d7bf31c63a 100644
      end else begin
        csid_q      <= (new_command && !stall) ? csid : csid_q;
        cpol_q      <= (new_command && !stall) ? cpol : cpol_q;
-@@ -183,17 +181,18 @@ module spi_host_fsm
+@@ -183,17 +182,18 @@ module spi_host_fsm
  
    assign active_o   = ~is_idle;
  
@@ -1657,7 +1703,7 @@ index 7ab1754732..d7bf31c63a 100644
  
    spi_host_st_e next_state_after_idle;
    always_comb begin
-@@ -212,7 +211,9 @@ module spi_host_fsm
+@@ -212,7 +212,9 @@ module spi_host_fsm
    logic         command_ready_idle_csb_active;
    always_comb begin
      if (command_valid_i) begin
@@ -1668,7 +1714,7 @@ index 7ab1754732..d7bf31c63a 100644
          //
          // Do not acknowledge the command now, as it will trigger
          // an update of the internal command and configuration registers.
-@@ -223,7 +224,11 @@ module spi_host_fsm
+@@ -223,7 +225,11 @@ module spi_host_fsm
          // Explicitly *suppress* command_ready
          command_ready_idle_csb_active = 1'b0;
        end else begin
@@ -1681,7 +1727,7 @@ index 7ab1754732..d7bf31c63a 100644
          command_ready_idle_csb_active = 1'b1;
        end
      end else begin
-@@ -254,14 +259,30 @@ module spi_host_fsm
+@@ -254,14 +260,30 @@ module spi_host_fsm
            end
          end
          InternalClkLow: begin
@@ -1717,7 +1763,7 @@ index 7ab1754732..d7bf31c63a 100644
              state_d = InternalClkLow;
            // Check value of csaat for the previously submitted segment
            end else if (!csaat_q) begin
-@@ -286,9 +307,9 @@ module spi_host_fsm
+@@ -286,9 +308,9 @@ module spi_host_fsm
            end
          end
          CSBSwitch: begin
@@ -1730,7 +1776,7 @@ index 7ab1754732..d7bf31c63a 100644
            if (wait_cntr_q == 4'h0) begin
              state_d = WaitLead;
            end else begin
-@@ -334,38 +355,29 @@ module spi_host_fsm
+@@ -334,38 +356,29 @@ module spi_host_fsm
    assign byte_ending_cpha0   = ~sw_rst_i & state_changing &
                                 (state_q == InternalClkHigh & bit_cntr_q == 0);
  
@@ -1782,7 +1828,7 @@ index 7ab1754732..d7bf31c63a 100644
  
    assign byte_starting = (cpha == 1'b0) ? byte_starting_cpha0 :
                                            byte_starting_cpha1;
-@@ -376,8 +388,7 @@ module spi_host_fsm
+@@ -376,8 +389,7 @@ module spi_host_fsm
    assign bit_shifting  = (cpha == 1'b0) ? bit_shifting_cpha0 :
                                            bit_shifting_cpha1;
  
@@ -1792,7 +1838,7 @@ index 7ab1754732..d7bf31c63a 100644
  
    assign segment_rd_en = (cpha == 1'b0) ? segment_rd_en_cpha0:
                                            segment_rd_en_cpha1;
-@@ -396,7 +407,7 @@ module spi_host_fsm
+@@ -396,7 +408,7 @@ module spi_host_fsm
        // a fixed number of pulses, NOT bytes.
        // thus "last_bit" is always asserted,
        // and the number of pulses is counted
@@ -1801,7 +1847,7 @@ index 7ab1754732..d7bf31c63a 100644
        shift_size = 0;
        start_bit = 3'h0;
      end else begin
-@@ -431,26 +442,30 @@ module spi_host_fsm
+@@ -431,26 +443,30 @@ module spi_host_fsm
    assign last_bit  = (bit_cntr_q == 3'h0);
    //
    // The variable last_byte is only used for updating the FSM state.
@@ -1844,7 +1890,7 @@ index 7ab1754732..d7bf31c63a 100644
                               byte_ending_cpha1 ? byte_cntr_cpha1_q - 1 :
                               byte_cntr_cpha1_q;
  
-@@ -489,8 +504,8 @@ module spi_host_fsm
+@@ -489,8 +505,8 @@ module spi_host_fsm
    always_ff @(posedge clk_i or negedge rst_ni) begin
      if (!rst_ni) begin
        bit_cntr_q        <= 3'h0;
@@ -1855,7 +1901,21 @@ index 7ab1754732..d7bf31c63a 100644
        wait_cntr_q       <= 4'h0;
      end else begin
        bit_cntr_q        <= stall ? bit_cntr_q        : bit_cntr_d;
-@@ -587,10 +602,8 @@ module spi_host_fsm
+@@ -504,7 +520,12 @@ module spi_host_fsm
+   assign shift_en_internal = bit_shifting;
+ 
+   assign rd_en_internal    = byte_ending & segment_rd_en;
+-  assign sample_en_d       = byte_starting | shift_en_o;
++  // For CPHA=0 the device drives the first bit when csb falls, and the host
++  // samples it at the first leading sck edge, which ends WaitLead. So the last
++  // WaitLead timeslice enables the sample too; with CSNLEAD=0 it is the first.
++  assign first_bit_sample_cpha0 = ~sw_rst_i & ~cpha & (state_d == WaitLead) &
++                                  (wait_cntr_d == 4'h0);
++  assign sample_en_d       = byte_starting | shift_en_o | first_bit_sample_cpha0;
+   assign full_cyc_o        = full_cyc;
+   assign last_read_o       = (byte_cntr_late == 'h0) & rd_en_o & sr_rd_ready_i;
+ 
+@@ -587,10 +608,8 @@ module spi_host_fsm
    // Assertions confirming valid user input.
    //
  
